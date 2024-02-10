@@ -1,0 +1,47 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.nav {
+  margin: 1rem;
+  gap: 2rem;
+  padding: 0 1rem;
+  font-size: 1.5rem;
+  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+}
+
+.site-title {
+  font-size: 5rem;
+  color: #14452F;
+  list-style: none;
+  text-decoration: none;
+}
+
+#nav-list {
+  display: flex;  
+  gap: 1rem;
+}
+
+#nav-list a {
+  align-items: center;
+  color: #14452F;
+  list-style: none;
+  text-decoration: none;
+  padding: .25rem;
+  padding-right: 2rem;
+}
+
+#pricingLink {
+  list-style: none;
+}
+
+#aboutLink {
+  list-style: none;
+}
