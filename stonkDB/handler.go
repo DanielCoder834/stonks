@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/google/btree"
+	"math"
+	"net"
 	"strconv"
 	"sync"
 	"time"
@@ -13,6 +15,12 @@ var SETs = map[string]string{}
 
 // SETsMu makes sure writes don't happen at the same time of other go routines (aka cooler threads)
 var SETsMu = sync.RWMutex{}
+
+const (
+	SERVER_HOST = "localhost"
+	SERVER_PORT = "9988"
+	SERVER_TYPE = "tcp"
+)
 
 // Handlers is a map of commands to function to do each action
 var Handlers = map[string]func([]Value) Value{
@@ -376,13 +384,20 @@ func (a Data) Less(b btree.Item) bool {
 	return inTimeSpan(a.Time, time.Now(), castItemTime.Time)
 }
 
-var degrees = 6
-var BTREESETs = btree.New(degrees)
+var freshDegrees = 6
+var BTREESETFRESHs = btree.New(freshDegrees)
+
+var validDegrees = 5
+var BTREESETVALIDs = btree.New(validDegrees)
+
+var staleDegrees = 3
+var BTREESETSTALEs = btree.New(staleDegrees)
+
 var BTREEMu = sync.RWMutex{}
 
 func arrbstarget(values []Value) Value {
 	//BTREESETs.ReplaceOrInsert(values[0])
-	fmt.Println("get8: ", BTREESETs.Get(btree.Int(8)))
+	//fmt.Println("get8: ", BTREESETs.Get(btree.Int(8)))
 	//item := btree.Item(8);
 	return Value{typ: "null"}
 }
@@ -395,27 +410,123 @@ func databstarset(values []Value) Value {
 	if yearErr != nil {
 		return Value{typ: "null"}
 	}
+
 	monthInt, montherr := strconv.Atoi(values[1].bulk)
 	if montherr != nil {
 		return Value{typ: "null"}
 	}
 	month := time.Month(monthInt)
 
+	day, dayErr := strconv.Atoi(values[2].bulk)
+	if dayErr != nil {
+		return Value{typ: "null"}
+	}
+
+	hour, hourErr := strconv.Atoi(values[3].bulk)
+	if hourErr != nil {
+		return Value{typ: "null"}
+	}
+
+	min, minErr := strconv.Atoi(values[4].bulk)
+	if minErr != nil {
+		return Value{typ: "null"}
+	}
+
+	sec, secErr := strconv.Atoi(values[5].bulk)
+	if secErr != nil {
+		return Value{typ: "null"}
+	}
+
+	nsec, nsecErr := strconv.Atoi(values[6].bulk)
+	if nsecErr != nil {
+		return Value{typ: "null"}
+	}
+
+	location, locationErr := time.LoadLocation(values[7].bulk)
+	if locationErr != nil {
+		return Value{typ: "null"}
+	}
+
 	value := values[8]
-	//value := values[8].bulk
-	//value := values[8].bulk
-	//value := values[8].bulk
-	//value := values[8].bulk
-	//value := values[8].bulk
 	data := Data{
 		DataAges: Fresh,
 		Value:    value,
-		Time:     time.Date(year, month, 0, 0, 0, 0, 0, time.UTC),
+		Time:     time.Date(year, month, day, hour, min, sec, nsec, location),
 	}
+	conn, err := net.Dial(SERVER_TYPE, SERVER_HOST+":"+SERVER_PORT)
+	if err != nil {
+		fmt.Println(err)
+		panic(err)
+	}
+	_, err = conn.Write([]byte("Hello Server! Greetings."))
+	if err != nil {
+		fmt.Println("Error reading:", err.Error())
+	}
+	waitForGraph(conn)
+	defer func(conn net.Conn) {
+		err := conn.Close()
+		if err != nil {
+			fmt.Println("Error closing:", err.Error())
+			return
+		}
+	}(conn)
 	return value
 }
 
 func databstarget(values []Value) Value {
+}
+
+// Height = log(base = m)((# of keys + 1) / 2), where m in the minimum degrees
+func heightOfBTreeFresh() float64 {
+	return math.Log(float64((BTREESETFRESHs.Len()+1)/2)) / math.Log(float64(freshDegrees))
+}
+
+func heightOfBTreeValid() float64 {
+	return math.Log(float64((BTREESETVALIDs.Len()+1)/2)) / math.Log(float64(validDegrees))
+}
+
+func heightOfBTreeStale() float64 {
+	return math.Log(float64((BTREESETSTALEs.Len()+1)/2)) / math.Log(float64(staleDegrees))
+}
+
+func waitForGraph(conn net.Conn) {
+	ch := make(chan []byte)
+	eCh := make(chan error)
+
+	// Start a goroutine to read from our net connection
+	go func(ch chan []byte, eCh chan error) {
+		for {
+			// try to read the data
+			data := make([]byte, 512)
+			_, err := conn.Read(data)
+			if err != nil {
+				// send an error if it's encountered
+				eCh <- err
+				return
+			}
+			// send data if we read some.
+			ch <- data
+		}
+	}(ch, eCh)
+
+	ticker := time.Tick(time.Second)
+	// continuously read from the connection
+	for {
+		select {
+		// This case means we recieved data on the connection
+		case data := <-ch:
+			// Do something with the data
+		// This case means we got an error and the goroutine has finished
+		case err := <-eCh:
+			// handle our error then exit for loop
+			break
+		// This will timeout on the read.
+		case <-ticker:
+			// do nothing? this is just so we can time out if we need to.
+			// you probably don't even need to have this here unless you want
+			// do something specifically on the timeout.
+		}
+	}
 }
 
 //func numoflayers(m map[string]interface{}) map[string]interface{} {
